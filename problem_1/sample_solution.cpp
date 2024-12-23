@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <iomanip>
+#include <thread>
 
 
 std::vector<std::vector<double>> read_matrix() {
@@ -26,6 +27,7 @@ std::vector<std::vector<double>> read_matrix() {
             }
         }
     }
+
     size_t max_value = 0;
     for (size_t i = 0; i < rows; ++i) {
         for (size_t j = 0; j < cols; ++j) {
@@ -43,6 +45,23 @@ std::vector<std::vector<double>> read_matrix() {
     return result;
 }
 
+void multiply_section(
+    const std::vector<std::vector<double>>& left,
+    const std::vector<std::vector<double>>& right,
+    std::vector<std::vector<double>>& result,
+    int start_row, int end_row
+) {
+    const auto left_cols = left[0].size();
+    const auto right_cols = right[0].size();
+
+    for (int i = start_row; i < end_row; ++i) {
+        for (int j = 0; j < right_cols; ++j) {
+            for (int k = 0; k < left_cols; ++k) {
+                result[i][j] += left[i][k] * right[k][j];
+            }
+        }
+    }
+}
 
 int main() {
     auto left = read_matrix();
@@ -57,12 +76,21 @@ int main() {
     }
 
     std::vector<std::vector<double>> result(left_rows, std::vector<double>(right_cols));
-    for (int i = 0; i < left_rows; ++i) {
-        for (int j = 0; j < right_cols; ++j) {
-            for (int k = 0; k < left_cols; ++k) {
-                result[i][j] += left[i][k] * right[k][j];
-            }
+
+    const int num_threads = std::thread::hardware_concurrency();
+    const int chunk_size = (left_rows + num_threads - 1) / num_threads;
+    std::vector<std::thread> threads;
+
+    for (int t = 0; t < num_threads; ++t) {
+        int start_row = t * chunk_size;
+        int end_row = std::min(start_row + chunk_size, static_cast<int>(left_rows));
+        if (start_row < end_row) {
+            threads.emplace_back(multiply_section, std::cref(left), std::cref(right), std::ref(result), start_row, end_row);
         }
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
     }
 
     std::cout << left_rows << ' ' << right_cols << "\n";
